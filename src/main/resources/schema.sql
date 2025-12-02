@@ -1,4 +1,6 @@
-CREATE TABLE IF NOT EXISTS excel_data (
+DROP TABLE IF EXISTS excel_data;
+
+CREATE UNLOGGED TABLE excel_data (
     id BIGSERIAL,
     column1 VARCHAR(255) NOT NULL,
     column2 INTEGER,

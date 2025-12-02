@@ -30,7 +30,7 @@ public class ExcelService {
     @Qualifier("taskExecutor")
     private final Executor taskExecutor;
 
-    private static final int BATCH_SIZE = 5000;
+    private static final int BATCH_SIZE = 20000;
 
     public UploadResponse processExcel(MultipartFile file) throws Exception {
         long startTime = System.currentTimeMillis();

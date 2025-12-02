@@ -1,0 +1,57 @@
+plugins {
+	id 'java'
+	id 'org.springframework.boot' version '3.2.5'
+	id 'io.spring.dependency-management' version '1.1.4'
+	id 'application'
+}
+
+group = 'com.example'
+version = '0.0.1-SNAPSHOT'
+description = 'Demo project for Spring Boot'
+
+java {
+	toolchain {
+		languageVersion = JavaLanguageVersion.of(21)
+	}
+}
+
+configurations {
+	compileOnly {
+		extendsFrom annotationProcessor
+	}
+}
+
+repositories {
+	mavenCentral()
+}
+
+dependencies {
+	implementation 'org.springframework.boot:spring-boot-starter-web'
+	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+	implementation 'org.springframework.boot:spring-boot-starter-jdbc'
+	runtimeOnly 'org.postgresql:postgresql'
+	implementation 'org.apache.poi:poi-ooxml:5.2.5'
+	compileOnly 'org.projectlombok:lombok'
+	annotationProcessor 'org.projectlombok:lombok'
+	testImplementation 'org.springframework.boot:spring-boot-starter-test'
+	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+tasks.named('test') {
+	useJUnitPlatform()
+}
+
+task generateData(type: JavaExec) {
+	mainClass = 'com.example.excel.DataGenerator'
+	classpath = sourceSets.test.runtimeClasspath
+}
+
+task generateSmallData(type: JavaExec) {
+	mainClass = 'com.example.excel.SmallDataGenerator'
+	classpath = sourceSets.test.runtimeClasspath
+}
+
+task generate100K(type: JavaExec) {
+	mainClass = 'com.example.excel.Medium100KDataGenerator'
+	classpath = sourceSets.test.runtimeClasspath
+}

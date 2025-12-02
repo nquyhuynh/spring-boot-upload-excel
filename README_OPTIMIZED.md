@@ -127,11 +127,11 @@ graph TD
     Controller --> Service[ExcelService]
     
     subgraph "Processing Pipeline"
-        Service -->|Stream File| Parser[ExcelStreamParser (fastexcel)]
-        Parser -->|Batch (20k rows)| ThreadPool[Thread Pool]
+        Service -->|Stream File| Parser[ExcelStreamParser fastexcel]
+        Parser -->|Batch 20k rows| ThreadPool[Thread Pool]
         
         ThreadPool -->|Async Task| BatchProc[Batch Processor]
         BatchProc -->|Convert to CSV| CSV[In-Memory CSV]
-        CSV -->|COPY Command| DB[(PostgreSQL)]
+        CSV -->|COPY Command| DB[PostgreSQL]
     end
 ```

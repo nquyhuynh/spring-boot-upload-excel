@@ -9,7 +9,7 @@ This project demonstrates an optimized solution for processing large Excel files
 | Initial | Apache POI (DOM) | JPA SaveAll | > 5 mins | ❌ |
 | Stage 1 | Apache POI (SAX) | JDBC Batch | ~90s | ⚠️ |
 | Stage 2 | Apache POI (SAX) | Multi-Value INSERT | ~83s | ⚠️ |
-| **Final** | **FastExcel** | **PostgreSQL COPY** | **< 10s** | ✅ |
+| **Final** | **FastExcel** | **PostgreSQL COPY** | **< 20s** | ✅ |
 
 ---
 

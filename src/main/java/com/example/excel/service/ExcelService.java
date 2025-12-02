@@ -30,11 +30,11 @@ public class ExcelService {
     @Qualifier("taskExecutor")
     private final Executor taskExecutor;
 
-    private static final int BATCH_SIZE = 5000; // Optimized for performance
+    private static final int BATCH_SIZE = 5000;
 
     public UploadResponse processExcel(MultipartFile file) throws Exception {
         long startTime = System.currentTimeMillis();
-        log.info("=== Starting Excel Processing ===");
+        log.info("=== Starting Excel Processing (fastexcel) ===");
         log.info("File name: {}, Size: {} bytes", file.getOriginalFilename(), file.getSize());
 
         // Step 1: Upload file
@@ -53,20 +53,30 @@ public class ExcelService {
         AtomicLong totalDbTime = new AtomicLong(0);
 
         ExcelStreamParser parser = new ExcelStreamParser();
+        List<CompletableFuture<Void>> futures = new ArrayList<>();
+        long parsingOnlyTime = 0;
 
         try {
             // Step 2: Parse and process
             long parseStart = System.currentTimeMillis();
-            log.info("Starting SAX parsing with batch size: {}", BATCH_SIZE);
+            log.info("Starting parsing with batch size: {}", BATCH_SIZE);
 
             parser.parse(tempFile.toFile(), batch -> {
-                // Process batch synchronously - no thread pool overhead
-                processBatch(batch, totalRowsProcessed, totalRowsInserted, allErrors, totalParsingTime, totalDbTime);
+                // Submit batch processing to thread pool for parallel execution
+                CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
+                    processBatch(batch, totalRowsProcessed, totalRowsInserted, allErrors, totalParsingTime,
+                            totalDbTime);
+                }, taskExecutor);
+                futures.add(future);
             }, BATCH_SIZE);
 
             long parseEnd = System.currentTimeMillis();
-            long parsingOnlyTime = parseEnd - parseStart;
-            log.info("✓ SAX Parsing and processing completed in {} ms", parsingOnlyTime);
+            parsingOnlyTime = parseEnd - parseStart;
+            log.info("✓ Parsing completed in {} ms", parsingOnlyTime);
+
+            // Wait for all async tasks to complete
+            log.info("Waiting for {} batches to complete...", futures.size());
+            CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
 
         } finally {
             Files.deleteIfExists(tempFile);
@@ -80,8 +90,9 @@ public class ExcelService {
         log.info("Total rows inserted: {}", totalRowsInserted.get());
         log.info("Total errors: {}", allErrors.size());
         log.info("--- Timing Breakdown ---");
-        log.info("Stage 1 - Parsing (SAX): {} ms", totalParsingTime.get());
-        log.info("Stage 2 - Database Insert: {} ms", totalDbTime.get());
+        log.info("File Reading (fastexcel): {} ms", parsingOnlyTime);
+        log.info("Validation (Accumulated): {} ms", totalParsingTime.get());
+        log.info("DB Insert (Accumulated): {} ms", totalDbTime.get());
         log.info("Total processing time: {} ms ({} seconds)", totalTime, totalTime / 1000.0);
         log.info("Throughput: {} rows/second", (totalRowsProcessed.get() * 1000.0) / totalTime);
         log.info("=========================");
@@ -102,7 +113,7 @@ public class ExcelService {
             AtomicLong totalDbTime) {
 
         long batchStart = System.currentTimeMillis();
-        List<ExcelRow> validRows = new ArrayList<>();
+        List<ExcelRow> validRows = new ArrayList<>(batch.size());
 
         // Validation phase
         for (ExcelRow row : batch) {

@@ -52,7 +52,7 @@ public class ExcelStreamParser {
         private final Consumer<List<ExcelRow>> batchConsumer;
         private final int batchSize;
         private List<ExcelRow> currentBatch = new ArrayList<>();
-        private String[] currentRowData = new String[30]; // Fixed 30 columns
+        private String[] currentRowData = new String[32]; // Fixed 32 columns (order_id, qty, column1-column30)
         private int currentRowIndex = 0;
 
         public SheetToRowsHandler(Consumer<List<ExcelRow>> batchConsumer, int batchSize) {
@@ -64,7 +64,7 @@ public class ExcelStreamParser {
         @Override
         public void startRow(int rowNum) {
             currentRowIndex = rowNum;
-            currentRowData = new String[30];
+            currentRowData = new String[32];
         }
 
         @Override
@@ -85,13 +85,13 @@ public class ExcelStreamParser {
         @Override
         public void cell(String cellReference, String formattedValue,
                 org.apache.poi.xssf.usermodel.XSSFComment comment) {
-            // cellReference is like "A1", "B2". Need to map to index 0-29.
+            // cellReference is like "A1", "B2". Need to map to index 0-31.
             if (cellReference == null)
                 return;
 
             // Simple column index extraction
             int colIndex = getColumnIndex(cellReference);
-            if (colIndex >= 0 && colIndex < 30) {
+            if (colIndex >= 0 && colIndex < 32) {
                 currentRowData[colIndex] = formattedValue;
             }
         }

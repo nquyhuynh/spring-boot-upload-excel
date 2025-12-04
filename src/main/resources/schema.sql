@@ -1,5 +1,8 @@
-CREATE TABLE IF NOT EXISTS excel_data (
-    id BIGSERIAL,
+-- Order table with master data for validation
+CREATE TABLE IF NOT EXISTS "order" (
+    id BIGSERIAL PRIMARY KEY,
+    order_id INTEGER NOT NULL UNIQUE,
+    qty INTEGER NOT NULL,
     column1 VARCHAR(255) NOT NULL,
     column2 INTEGER,
     column3 VARCHAR(255),
@@ -31,3 +34,80 @@ CREATE TABLE IF NOT EXISTS excel_data (
     column29 VARCHAR(255),
     column30 VARCHAR(255)
 );
+
+-- Excel data table with order_id and qty for validation
+CREATE TABLE IF NOT EXISTS excel_data (
+    id BIGSERIAL,
+    order_id INTEGER,
+    qty INTEGER,
+    column1 VARCHAR(255) NOT NULL,
+    column2 INTEGER,
+    column3 VARCHAR(255),
+    column4 VARCHAR(255),
+    column5 VARCHAR(255),
+    column6 VARCHAR(255),
+    column7 VARCHAR(255),
+    column8 VARCHAR(255),
+    column9 VARCHAR(255),
+    column10 VARCHAR(255),
+    column11 VARCHAR(255),
+    column12 VARCHAR(255),
+    column13 VARCHAR(255),
+    column14 VARCHAR(255),
+    column15 VARCHAR(255),
+    column16 VARCHAR(255),
+    column17 VARCHAR(255),
+    column18 VARCHAR(255),
+    column19 VARCHAR(255),
+    column20 VARCHAR(255),
+    column21 VARCHAR(255),
+    column22 VARCHAR(255),
+    column23 VARCHAR(255),
+    column24 VARCHAR(255),
+    column25 VARCHAR(255),
+    column26 VARCHAR(255),
+    column27 VARCHAR(255),
+    column28 VARCHAR(255),
+    column29 VARCHAR(255),
+    column30 VARCHAR(255)
+);
+
+-- Generate 10K rows of master order data
+INSERT INTO "order" (order_id, qty, column1, column2, column3, column4, column5, column6, column7, column8, column9, column10,
+                     column11, column12, column13, column14, column15, column16, column17, column18, column19, column20,
+                     column21, column22, column23, column24, column25, column26, column27, column28, column29, column30)
+SELECT 
+    i as order_id,
+    (i * 10 + (i % 100)) as qty,
+    'Row_' || i as column1,
+    (i * 123) % 100000 as column2,
+    '2024-' || LPAD(((i % 12) + 1)::text, 2, '0') || '-' || LPAD(((i % 28) + 1)::text, 2, '0') as column3,
+    'Data_' || i || '_3' as column4,
+    'Data_' || i || '_4' as column5,
+    'Data_' || i || '_5' as column6,
+    'Data_' || i || '_6' as column7,
+    'Data_' || i || '_7' as column8,
+    'Data_' || i || '_8' as column9,
+    'Data_' || i || '_9' as column10,
+    'Data_' || i || '_10' as column11,
+    'Data_' || i || '_11' as column12,
+    'Data_' || i || '_12' as column13,
+    'Data_' || i || '_13' as column14,
+    'Data_' || i || '_14' as column15,
+    'Data_' || i || '_15' as column16,
+    'Data_' || i || '_16' as column17,
+    'Data_' || i || '_17' as column18,
+    'Data_' || i || '_18' as column19,
+    'Data_' || i || '_19' as column20,
+    'Data_' || i || '_20' as column21,
+    'Data_' || i || '_21' as column22,
+    'Data_' || i || '_22' as column23,
+    'Data_' || i || '_23' as column24,
+    'Data_' || i || '_24' as column25,
+    'Data_' || i || '_25' as column26,
+    'Data_' || i || '_26' as column27,
+    'Data_' || i || '_27' as column28,
+    'Data_' || i || '_28' as column29,
+    'Data_' || i || '_29' as column30
+FROM generate_series(1, 10000) as i
+ON CONFLICT (order_id) DO NOTHING;

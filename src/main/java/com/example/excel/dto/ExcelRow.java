@@ -7,5 +7,5 @@ import lombok.Data;
 @AllArgsConstructor
 public class ExcelRow {
     private int rowIndex;
-    private String[] data; // Array of 30 columns
+    private String[] data; // Array of 32 columns: order_id, qty, column1-column30
 }

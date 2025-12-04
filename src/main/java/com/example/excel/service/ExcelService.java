@@ -4,19 +4,20 @@ import com.example.excel.dto.ErrorDetail;
 import com.example.excel.dto.ExcelRow;
 import com.example.excel.dto.UploadResponse;
 import com.example.excel.repository.BatchRepository;
+import com.example.excel.repository.OrderRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
-import java.util.concurrent.CompletableFuture;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentLinkedQueue;
-import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -26,9 +27,7 @@ import java.util.concurrent.atomic.AtomicLong;
 public class ExcelService {
 
     private final BatchRepository batchRepository;
-
-    @Qualifier("taskExecutor")
-    private final Executor taskExecutor;
+    private final OrderRepository orderRepository;
 
     private static final int BATCH_SIZE = 5000; // Optimized for performance
 
@@ -51,6 +50,7 @@ public class ExcelService {
         // Track time for each stage
         AtomicLong totalParsingTime = new AtomicLong(0);
         AtomicLong totalDbTime = new AtomicLong(0);
+        AtomicLong totalValidationTime = new AtomicLong(0);
 
         ExcelStreamParser parser = new ExcelStreamParser();
 
@@ -60,8 +60,9 @@ public class ExcelService {
             log.info("Starting SAX parsing with batch size: {}", BATCH_SIZE);
 
             parser.parse(tempFile.toFile(), batch -> {
-                // Process batch synchronously - no thread pool overhead
-                processBatch(batch, totalRowsProcessed, totalRowsInserted, allErrors, totalParsingTime, totalDbTime);
+                // Process batch synchronously - validate against DB per batch
+                processBatch(batch, totalRowsProcessed, totalRowsInserted, allErrors, totalParsingTime, totalDbTime,
+                        totalValidationTime);
             }, BATCH_SIZE);
 
             long parseEnd = System.currentTimeMillis();
@@ -80,8 +81,9 @@ public class ExcelService {
         log.info("Total rows inserted: {}", totalRowsInserted.get());
         log.info("Total errors: {}", allErrors.size());
         log.info("--- Timing Breakdown ---");
-        log.info("Stage 1 - Parsing (SAX): {} ms", totalParsingTime.get());
-        log.info("Stage 2 - Database Insert: {} ms", totalDbTime.get());
+        log.info("Stage 1 - Validation (DB Query): {} ms", totalValidationTime.get());
+        log.info("Stage 2 - Parsing: {} ms", totalParsingTime.get());
+        log.info("Stage 3 - Database Insert: {} ms", totalDbTime.get());
         log.info("Total processing time: {} ms ({} seconds)", totalTime, totalTime / 1000.0);
         log.info("Throughput: {} rows/second", (totalRowsProcessed.get() * 1000.0) / totalTime);
         log.info("=========================");
@@ -99,30 +101,100 @@ public class ExcelService {
     private void processBatch(List<ExcelRow> batch, AtomicInteger totalRowsProcessed,
             AtomicInteger totalRowsInserted, ConcurrentLinkedQueue<ErrorDetail> allErrors,
             AtomicLong totalParsingTime,
-            AtomicLong totalDbTime) {
+            AtomicLong totalDbTime,
+            AtomicLong totalValidationTime) {
 
         long batchStart = System.currentTimeMillis();
-        List<ExcelRow> validRows = new ArrayList<>();
 
-        // Validation phase
+        // Step 1: Collect all order_ids from this batch
+        Set<Integer> orderIdsInBatch = new HashSet<>();
+        for (ExcelRow row : batch) {
+            String[] data = row.getData();
+            if (data[0] != null && !data[0].trim().isEmpty()) {
+                try {
+                    orderIdsInBatch.add(Integer.parseInt(data[0]));
+                } catch (NumberFormatException e) {
+                    // Will be caught in validation phase
+                }
+            }
+        }
+
+        // Step 2: Query database for these order_ids only (memory-efficient)
+        long validationStart = System.currentTimeMillis();
+        Map<Integer, Integer> orderMap = orderRepository.getOrdersByIds(orderIdsInBatch);
+        long validationQueryEnd = System.currentTimeMillis();
+        totalValidationTime.addAndGet(validationQueryEnd - validationStart);
+
+        // Step 3: Validate each row
+        List<ExcelRow> validRows = new ArrayList<>();
         for (ExcelRow row : batch) {
             totalRowsProcessed.incrementAndGet();
 
-            // Quick validation - only check critical fields
             String[] data = row.getData();
-            if (data[0] == null || data[0].trim().isEmpty()) {
-                allErrors.add(new ErrorDetail(row.getRowIndex(), "column1", "Column A must not be null or empty"));
-                continue;
+            boolean hasError = false;
+
+            // Validation 1: Column1 (index 2) must not be null or empty
+            if (data[2] == null || data[2].trim().isEmpty()) {
+                allErrors.add(new ErrorDetail(row.getRowIndex(), "column1", "Column1 must not be null or empty"));
+                hasError = true;
             }
 
-            validRows.add(row);
+            // Validation 2: order_id (index 0) and qty (index 1) must match order table
+            try {
+                if (data[0] != null && !data[0].trim().isEmpty()) {
+                    Integer orderId = Integer.parseInt(data[0]);
+
+                    // Check if order_id exists in order table
+                    if (!orderMap.containsKey(orderId)) {
+                        allErrors.add(new ErrorDetail(row.getRowIndex(), "order_id",
+                                "Order ID " + orderId + " not found in order table"));
+                        hasError = true;
+                    } else {
+                        // Check if qty matches
+                        Integer expectedQty = orderMap.get(orderId);
+
+                        if (data[1] != null && !data[1].trim().isEmpty()) {
+                            try {
+                                Integer actualQty = Integer.parseInt(data[1]);
+                                if (!expectedQty.equals(actualQty)) {
+                                    allErrors.add(new ErrorDetail(row.getRowIndex(), "qty",
+                                            "Qty mismatch for order_id " + orderId + ": expected " + expectedQty
+                                                    + ", got " + actualQty));
+                                    hasError = true;
+                                }
+                            } catch (NumberFormatException e) {
+                                allErrors.add(new ErrorDetail(row.getRowIndex(), "qty",
+                                        "Invalid qty format: " + data[1]));
+                                hasError = true;
+                            }
+                        } else {
+                            allErrors.add(new ErrorDetail(row.getRowIndex(), "qty",
+                                    "Qty is null or empty for order_id " + orderId));
+                            hasError = true;
+                        }
+                    }
+                } else {
+                    allErrors.add(new ErrorDetail(row.getRowIndex(), "order_id",
+                            "Order ID is null or empty"));
+                    hasError = true;
+                }
+            } catch (NumberFormatException e) {
+                allErrors.add(new ErrorDetail(row.getRowIndex(), "order_id",
+                        "Invalid order_id format: " + data[0]));
+                hasError = true;
+            }
+
+            // Only add to valid rows if no errors
+            if (!hasError) {
+                validRows.add(row);
+            }
         }
 
         long validationEnd = System.currentTimeMillis();
-        long validationTime = validationEnd - batchStart;
+        long validationTime = validationEnd - batchStart - (validationQueryEnd - validationStart);
         totalParsingTime.addAndGet(validationTime);
 
-        // Database insert phase
+        // Step 4: Database insert phase
         if (!validRows.isEmpty()) {
             try {
                 long dbStart = System.currentTimeMillis();
